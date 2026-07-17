@@ -539,27 +539,29 @@ function sync(){
 sync();
 
 // ---------------------------------------------------------------
-// SharePoint integration
-// ไฟล์นี้ต้องถูกอัปโหลดไว้ในไลบรารีของ SharePoint Site เดียวกันกับ
-// List "WorkPermit" (เช่น Site Assets) เพื่อให้เรียก REST API แบบ
-// same-origin ด้วยสิทธิ์ผู้ใช้ที่ล็อกอินอยู่ได้โดยไม่ต้องตั้งค่า CORS
+// ส่งข้อมูลผ่าน Power Automate (HTTP trigger) แทนการเรียก SharePoint
+// REST API ตรงๆ เพื่อให้คนนอกองค์กร (ผู้รับเหมาที่ไม่มีบัญชี M365)
+// กรอกและส่งฟอร์มได้โดยไม่ต้อง login เข้า SharePoint
+//
+// ตั้งค่าที่ต้องทำใน Power Automate (ทำครั้งเดียว):
+//   1. สร้าง Flow ใหม่ > Trigger "When a HTTP request is received"
+//      - Who can trigger the flow: Anyone
+//      - วาง Sample payload (ดู sample ด้านล่างในฟังก์ชัน buildPayload)
+//        แล้วกด "Use sample payload to generate schema"
+//   2. เพิ่ม Action "Create item" (SharePoint) ชี้ไปที่ Site/List "WorkPermit"
+//      แล้ว map ฟิลด์จาก Trigger body ไปยังคอลัมน์แต่ละตัวตามชื่อ
+//      (Work_Nature / Work_Type / PPE_Used / Safety_Equipment เป็น
+//       MultiChoice ให้กด "Switch to input entire array" แล้วใส่
+//       expression triggerBody()?['ชื่อฟิลด์'] ตรงๆ)
+//   3. เพิ่ม Action "Response" ส่งกลับ Status 200 พร้อม body {"result":"ok"}
+//   4. คัดลอก HTTP POST URL ที่ได้จาก Trigger มาใส่ค่าคงที่ด้านล่างนี้
+//
+// หมายเหตุด้านความปลอดภัย: URL นี้จะฝังอยู่ใน source ของหน้าเว็บ (มองเห็น
+// ได้ทุกคนที่เปิด view-source) ตัว URL มี signature กันเดา แต่ไม่ใช่ความลับ
+// 100% — ถ้าต้องการความปลอดภัยเพิ่ม ให้ตรวจสอบ/กรองข้อมูลซ้ำในฝั่ง Flow
+// (เช่น validate email, จำกัดอัตราการยิง) ก่อนสร้าง item จริง
 // ---------------------------------------------------------------
-const SP_LIST_NAME = "WorkPermit";
-const SP_LIST_ITEM_TYPE = "SP.Data.WorkPermitListItem";
-const SP_SITE_URL = (typeof _spPageContextInfo !== 'undefined' && _spPageContextInfo.webAbsoluteUrl)
-  ? _spPageContextInfo.webAbsoluteUrl
-  : window.location.origin + window.location.pathname.replace(/\/(SiteAssets|Shared Documents|Style Library)\/.*$/i, '');
-
-async function getRequestDigest(){
-  const res = await fetch(`${SP_SITE_URL}/_api/contextinfo`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Accept': 'application/json;odata=verbose' }
-  });
-  if(!res.ok) throw new Error(`ไม่สามารถขอ Request Digest ได้ (${res.status})`);
-  const data = await res.json();
-  return data.d.GetContextWebInformation.FormDigestValue;
-}
+const POWER_AUTOMATE_URL = "https://prod-00.southeastasia.logic.azure.com:443/workflows/xxxxxxxx/triggers/manual/paths/invoke?...";
 
 function buildWorkerNamesText(){
   return [...document.querySelectorAll('.worker-row')].map((row,i)=>{
@@ -571,7 +573,7 @@ function buildWorkerNamesText(){
   }).filter(Boolean).join('\n');
 }
 
-async function createWorkPermitItem(){
+function buildPayload(){
   const name = document.getElementById('f_name').value.trim();
   const company = document.getElementById('f_company').value.trim();
   const email = document.getElementById('f_email').value.trim();
@@ -582,45 +584,40 @@ async function createWorkPermitItem(){
   const to = document.getElementById('f_to').value;
   const countEl = document.querySelector('#grp_count input:checked');
 
-  const itemPayload = {
-    __metadata: { type: SP_LIST_ITEM_TYPE },
-    Title: `${company} / ${location} / ${date}`,
-    Submit_DateTime: new Date().toISOString(),
+  // โครงสร้างนี้คือ sample payload ที่ใช้วางใน Power Automate ตอนสร้าง
+  // Trigger "When a HTTP request is received" เพื่อ generate schema
+  return {
     Requester_Name: name,
     Company: company,
     Contact_Email: email,
     Contact_Phone: phone,
     Work_Location: location,
-    Work_Date: date ? new Date(date).toISOString() : null,
+    Work_Date: date,
     Time_From: from,
     Time_To: to,
-    Work_Nature: { results: getChecked('grp_nature') },
-    Work_Type: { results: getChecked('grp_type') },
+    Work_Nature: getChecked('grp_nature'),
+    Work_Type: getChecked('grp_type'),
     Worker_Count: countEl ? countEl.value : '',
     Worker_Names: buildWorkerNamesText(),
-    PPE_Used: { results: getChecked('grp_ppe') },
-    Safety_Equipment: { results: getChecked('grp_safety') },
+    PPE_Used: getChecked('grp_ppe'),
+    Safety_Equipment: getChecked('grp_safety'),
     Tools_List: document.getElementById('f_tools').value.trim(),
-    Rules_Confirmed_DateTime: rulesConfirmedAt || new Date().toISOString()
+    Rules_Confirmed_DateTime: rulesConfirmedAt || new Date().toISOString(),
+    Submit_DateTime: new Date().toISOString()
   };
+}
 
-  const digest = await getRequestDigest();
-  const res = await fetch(`${SP_SITE_URL}/_api/web/lists/GetByTitle('${SP_LIST_NAME}')/items`, {
+async function createWorkPermitItem(){
+  const res = await fetch(POWER_AUTOMATE_URL, {
     method: 'POST',
-    credentials: 'same-origin',
-    headers: {
-      'Accept': 'application/json;odata=verbose',
-      'Content-Type': 'application/json;odata=verbose',
-      'X-RequestDigest': digest
-    },
-    body: JSON.stringify(itemPayload)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildPayload())
   });
 
   if(!res.ok){
     const errBody = await res.text().catch(()=> '');
-    throw new Error(`บันทึกไม่สำเร็จ (${res.status}) ${errBody}`);
+    throw new Error(`ส่งคำขอไม่สำเร็จ (${res.status}) ${errBody}`);
   }
-  return res.json();
 }
 
 function submitForm(){
