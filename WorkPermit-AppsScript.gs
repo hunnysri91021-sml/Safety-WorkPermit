@@ -19,8 +19,9 @@
  *       - Execute as: Me
  *       - Who has access: Anyone
  *     กด Deploy แล้วคัดลอก Web app URL ที่ได้
- *  5. นำ URL ไปใส่ค่าคงที่ GOOGLE_SCRIPT_URL ในไฟล์ index.html, view.html,
- *     quiz.html, guard-login.html, site-report.html, dashboard.html
+ *  5. นำ URL ไปใส่ค่าคงที่ GOOGLE_SCRIPT_URL ในไฟล์ request-permit.html,
+ *     view.html, quiz.html, guard-login.html, site-report.html, dashboard.html
+ *     (index.html เป็นหน้าแรก/เมนูเลือกใช้งาน ไม่ต้องใส่ GOOGLE_SCRIPT_URL)
  *  6. เปิดแท็บ "Settings" ในชีต แล้วกรอก:
  *       - Safety_Team_Emails: อีเมล Safety Team (คั่นด้วยจุลภาคถ้ามีหลายคน)
  *       - Site_Base_URL: URL ของเว็บที่โฮสต์ไฟล์ .html ทั้งหมด เช่น
@@ -246,7 +247,7 @@ function doPost(e) {
 }
 
 // ---------------------------------------------------------------
-// 1) รับคำขอใหม่จากฟอร์ม (index.html)
+// 1) รับคำขอใหม่จากฟอร์ม (request-permit.html)
 // ---------------------------------------------------------------
 function handleSubmitPermit_(data) {
   if (!data.Requester_Name || !data.Company || !data.Contact_Email || !data.Work_Location || !data.Work_Date) {
