@@ -81,11 +81,11 @@ const STATUS_CLS = { "อนุมัติ": "approved", "ไม่อนุม
 
 async function login(){
   const pw = document.getElementById("pwInput").value;
-  const ok = await tryLoad(pw);
-  if (ok) {
+  const result = await tryLoad(pw);
+  if (result.ok) {
     sessionStorage.setItem(STORAGE_KEY, pw);
   } else {
-    document.getElementById("loginMsg").textContent = "รหัสผ่านไม่ถูกต้อง";
+    document.getElementById("loginMsg").textContent = result.message;
   }
 }
 
@@ -123,18 +123,18 @@ async function tryLoad(pw){
   try {
     const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=dashboard&pw=${encodeURIComponent(pw)}`);
     const data = await res.json();
-    if (data.result !== "ok") return false;
+    if (data.result !== "ok") return { ok: false, message: data.message || "รหัสผ่านไม่ถูกต้อง" };
     renderDashboard(data);
     if (!refreshTimer) refreshTimer = setInterval(() => tryLoad(pw), REFRESH_MS);
-    return true;
+    return { ok: true };
   } catch (err) {
-    return false;
+    return { ok: false, message: "เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง" };
   }
 }
 
 const savedPw = sessionStorage.getItem(STORAGE_KEY);
 if (savedPw) {
-  tryLoad(savedPw).then(ok => { if (!ok) sessionStorage.removeItem(STORAGE_KEY); });
+  tryLoad(savedPw).then(result => { if (!result.ok) sessionStorage.removeItem(STORAGE_KEY); });
 }
 </script>
 
