@@ -277,6 +277,21 @@
     <div class="card">
       <div class="sec-head"><div class="sec-num">5</div><h2>ยืนยันและส่งคำขอ</h2></div>
 
+      <div class="field-wrap">
+        <div class="rule-box" style="max-height:150px;">
+          <b>ประกาศความเป็นส่วนตัว (PDPA)</b><br>
+          บริษัท สยามกลการโลจิสติกส์ จำกัด จะเก็บรวบรวม ใช้ และเปิดเผยข้อมูลส่วนบุคคลที่ท่านให้ไว้ในแบบฟอร์มนี้
+          (ชื่อ-สกุล บริษัท อีเมล เบอร์โทร และรายชื่อผู้เข้าปฏิบัติงาน) เพื่อวัตถุประสงค์ในการพิจารณาอนุมัติการเข้าปฏิบัติงาน
+          ตรวจสอบสิทธิ์เข้า-ออกพื้นที่ และการดูแลความปลอดภัยเท่านั้น ข้อมูลจะเข้าถึงได้เฉพาะเจ้าหน้าที่ Safety Team
+          ที่เกี่ยวข้อง และจะถูกเก็บไว้ตามระยะเวลาที่จำเป็นตามวัตถุประสงค์ดังกล่าว ท่านมีสิทธิขอเข้าถึง แก้ไข
+          หรือขอให้ลบข้อมูลส่วนบุคคลของท่านได้ โดยติดต่อ Safety Team ของบริษัทฯ
+        </div>
+        <label class="agree">
+          <input type="checkbox" id="f_consent" onchange="sync()">
+          <span>ข้าพเจ้ารับทราบและยินยอมให้เก็บรวบรวม ใช้ข้อมูลส่วนบุคคลตามประกาศข้างต้น <span class="req">*</span></span>
+        </label>
+      </div>
+
       <div class="rules-gate" id="rulesGate">
         <div class="g-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 012-2h9l5 5v12a2 2 0 01-2 2H6a2 2 0 01-2-2V5z"/><path d="M14 3v5h5"/><path d="M8 12h8M8 16h5"/></svg>
@@ -529,39 +544,38 @@ function sync(){
   tagsEl.innerHTML = nature.length ? nature.map(n=>`<span class="t-tag">${n.split('/')[0]}</span>`).join('') : '';
 
   // progress
+  const consentChecked = document.getElementById('f_consent').checked;
   const fields = [name,company,document.getElementById('f_email').value,document.getElementById('f_phone').value,location,date,from,to];
   const filled = fields.filter(v=>v && v.trim()!=='').length;
   const pct = Math.round((filled/fields.length)*70 + (rulesConfirmed?30:0));
   document.getElementById('progressFill').style.width = Math.min(pct,100)+'%';
 
-  document.getElementById('submitBtn').disabled = !(filled===fields.length && rulesConfirmed);
+  document.getElementById('submitBtn').disabled = !(filled===fields.length && rulesConfirmed && consentChecked);
 }
 sync();
 
 // ---------------------------------------------------------------
-// ส่งข้อมูลผ่าน Power Automate (HTTP trigger) แทนการเรียก SharePoint
-// REST API ตรงๆ เพื่อให้คนนอกองค์กร (ผู้รับเหมาที่ไม่มีบัญชี M365)
-// กรอกและส่งฟอร์มได้โดยไม่ต้อง login เข้า SharePoint
+// ส่งข้อมูลไปที่ Google Sheets ผ่าน Google Apps Script Web App
+// (ใช้บัญชี Google ส่วนตัวได้ ฟรี ไม่ต้อง login เพื่อส่งฟอร์ม)
 //
-// ตั้งค่าที่ต้องทำใน Power Automate (ทำครั้งเดียว):
-//   1. สร้าง Flow ใหม่ > Trigger "When a HTTP request is received"
-//      - Who can trigger the flow: Anyone
-//      - วาง Sample payload (ดู sample ด้านล่างในฟังก์ชัน buildPayload)
-//        แล้วกด "Use sample payload to generate schema"
-//   2. เพิ่ม Action "Create item" (SharePoint) ชี้ไปที่ Site/List "WorkPermit"
-//      แล้ว map ฟิลด์จาก Trigger body ไปยังคอลัมน์แต่ละตัวตามชื่อ
-//      (Work_Nature / Work_Type / PPE_Used / Safety_Equipment เป็น
-//       MultiChoice ให้กด "Switch to input entire array" แล้วใส่
-//       expression triggerBody()?['ชื่อฟิลด์'] ตรงๆ)
-//   3. เพิ่ม Action "Response" ส่งกลับ Status 200 พร้อม body {"result":"ok"}
-//   4. คัดลอก HTTP POST URL ที่ได้จาก Trigger มาใส่ค่าคงที่ด้านล่างนี้
+// ตั้งค่าที่ต้องทำใน Google (ทำครั้งเดียว) — ดูโค้ดเต็มใน
+// WorkPermit-AppsScript.gs ในโปรเจกต์นี้:
+//   1. สร้าง Google Sheet ใหม่ (เช่น "SML Work Permit")
+//   2. เปิด Extensions > Apps Script วางโค้ดจาก WorkPermit-AppsScript.gs
+//   3. รันฟังก์ชัน setupSheet() หนึ่งครั้งเพื่อสร้างหัวตาราง (จะขอ authorize)
+//   4. Deploy > New deployment > เลือกประเภท "Web app"
+//        - Execute as: Me
+//        - Who has access: Anyone
+//   5. คัดลอก Web app URL ที่ได้มาใส่ค่าคงที่ด้านล่างนี้
+//   6. ตั้งค่าแชร์ของ Sheet เป็น "Restricted" แล้วเพิ่มเฉพาะอีเมลของ
+//      Safety Team ที่ต้องดูข้อมูล — ห้ามเปิดเป็น "Anyone with the link"
+//      เด็ดขาด เพื่อรักษาข้อมูลส่วนบุคคลตาม PDPA
 //
-// หมายเหตุด้านความปลอดภัย: URL นี้จะฝังอยู่ใน source ของหน้าเว็บ (มองเห็น
-// ได้ทุกคนที่เปิด view-source) ตัว URL มี signature กันเดา แต่ไม่ใช่ความลับ
-// 100% — ถ้าต้องการความปลอดภัยเพิ่ม ให้ตรวจสอบ/กรองข้อมูลซ้ำในฝั่ง Flow
-// (เช่น validate email, จำกัดอัตราการยิง) ก่อนสร้าง item จริง
+// หมายเหตุด้านความปลอดภัย: URL นี้ฝังอยู่ใน source ของหน้าเว็บ มองเห็น
+// ได้ทุกคนที่เปิด view-source ตัวสคริปต์ฝั่ง Google จึงรับได้แค่ "เพิ่ม
+// แถวใหม่" เท่านั้น (ไม่มีช่องทางอ่านข้อมูลกลับผ่าน URL นี้)
 // ---------------------------------------------------------------
-const POWER_AUTOMATE_URL = "https://prod-00.southeastasia.logic.azure.com:443/workflows/xxxxxxxx/triggers/manual/paths/invoke?...";
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/exec";
 
 function buildWorkerNamesText(){
   return [...document.querySelectorAll('.worker-row')].map((row,i)=>{
@@ -584,8 +598,7 @@ function buildPayload(){
   const to = document.getElementById('f_to').value;
   const countEl = document.querySelector('#grp_count input:checked');
 
-  // โครงสร้างนี้คือ sample payload ที่ใช้วางใน Power Automate ตอนสร้าง
-  // Trigger "When a HTTP request is received" เพื่อ generate schema
+  // โครงสร้าง JSON นี้คือสิ่งที่ doPost() ใน WorkPermit-AppsScript.gs รับเข้าไป
   return {
     Requester_Name: name,
     Company: company,
@@ -603,20 +616,26 @@ function buildPayload(){
     Safety_Equipment: getChecked('grp_safety'),
     Tools_List: document.getElementById('f_tools').value.trim(),
     Rules_Confirmed_DateTime: rulesConfirmedAt || new Date().toISOString(),
-    Submit_DateTime: new Date().toISOString()
+    Consent_PDPA: document.getElementById('f_consent').checked
   };
 }
 
 async function createWorkPermitItem(){
-  const res = await fetch(POWER_AUTOMATE_URL, {
+  // Content-Type: text/plain กันไม่ให้ browser ยิง CORS preflight (OPTIONS)
+  // ซึ่ง Google Apps Script Web App ไม่รองรับ — ฝั่ง doPost() ยัง parse
+  // เนื้อหาเป็น JSON ตามปกติ
+  const res = await fetch(GOOGLE_SCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify(buildPayload())
   });
 
   if(!res.ok){
-    const errBody = await res.text().catch(()=> '');
-    throw new Error(`ส่งคำขอไม่สำเร็จ (${res.status}) ${errBody}`);
+    throw new Error(`ส่งคำขอไม่สำเร็จ (${res.status})`);
+  }
+  const data = await res.json().catch(()=> ({}));
+  if(data.result === 'error'){
+    throw new Error(data.message || 'เกิดข้อผิดพลาดที่ปลายทาง');
   }
 }
 
