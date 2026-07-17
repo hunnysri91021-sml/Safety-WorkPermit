@@ -344,13 +344,16 @@
           <div class="ticket-status" id="t_status">ร่างคำขอ</div>
         </div>
         <div class="ticket-body">
-          <div class="t-row"><span class="k">เลขที่ Permit</span><span class="v">รอออกเลขหลังอนุมัติ</span></div>
+          <div class="t-row"><span class="k">เลขที่ Permit</span><span class="v" id="t_permit_id">รอออกเลขหลังส่งคำขอ</span></div>
           <div class="t-row"><span class="k">ผู้แจ้ง</span><span class="v" id="t_name">—</span></div>
           <div class="t-row"><span class="k">บริษัท</span><span class="v" id="t_company">—</span></div>
           <div class="t-row"><span class="k">สถานที่</span><span class="v" id="t_location">—</span></div>
           <div class="t-row"><span class="k">วันเวลา</span><span class="v" id="t_datetime">—</span></div>
           <div class="t-row"><span class="k">จำนวนคน</span><span class="v" id="t_count">—</span></div>
           <div class="t-tags" id="t_tags"></div>
+          <div id="t_view_link" style="display:none;margin-top:12px;text-align:center;">
+            <a id="t_view_anchor" href="#" target="_blank" style="color:#FFCBB0;font-size:12px;text-decoration:underline;">ดูสถานะ Permit นี้ →</a>
+          </div>
         </div>
         <div class="ticket-foot">
           <span>ตรวจสอบสิทธิ์ที่ป้อม รปภ.</span>
@@ -570,8 +573,12 @@ sync();
 //   4. Deploy > New deployment > เลือกประเภท "Web app"
 //        - Execute as: Me
 //        - Who has access: Anyone
-//   5. คัดลอก Web app URL ที่ได้มาใส่ค่าคงที่ด้านล่างนี้
-//   6. ตั้งค่าแชร์ของ Sheet เป็น "Restricted" แล้วเพิ่มเฉพาะอีเมลของ
+//   5. คัดลอก Web app URL ที่ได้มาใส่ค่าคงที่ด้านล่างนี้ และใส่ URL เดียวกัน
+//      ในไฟล์ view.html (ค่าคงที่ GOOGLE_SCRIPT_URL เช่นกัน)
+//   6. เปิดแท็บ "Settings" ในชีต กรอก Site_Base_URL เป็น URL ของเว็บที่
+//      โฮสต์ไฟล์นี้ (เช่น GitHub Pages) เพื่อให้ PDF ที่ออกตอนอนุมัติสร้าง
+//      QR Code ชี้มาที่ view.html ได้ถูกต้อง
+//   7. ตั้งค่าแชร์ของ Sheet เป็น "Restricted" แล้วเพิ่มเฉพาะอีเมลของ
 //      Safety Team ที่ต้องดูข้อมูล — ห้ามเปิดเป็น "Anyone with the link"
 //      เด็ดขาด เพื่อรักษาข้อมูลส่วนบุคคลตาม PDPA
 //
@@ -641,6 +648,7 @@ async function createWorkPermitItem(){
   if(data.result === 'error'){
     throw new Error(data.message || 'เกิดข้อผิดพลาดที่ปลายทาง');
   }
+  return data;
 }
 
 function submitForm(){
@@ -651,12 +659,20 @@ function submitForm(){
   btn.disabled = true;
 
   createWorkPermitItem()
-    .then(()=>{
+    .then((data)=>{
       document.getElementById('t_status').textContent = 'รอ Safety Team อนุมัติ';
       document.getElementById('t_status').style.background = 'rgba(232,98,44,.3)';
       document.getElementById('fs2').classList.add('active');
       btn.textContent = 'ส่งคำขอแล้ว ✓';
       btn.style.background = '#2F8F5B';
+
+      if(data && data.permitId){
+        document.getElementById('t_permit_id').textContent = data.permitId;
+        const viewUrl = new URL('view.html', window.location.href).href + '?id=' + encodeURIComponent(data.permitId);
+        const anchor = document.getElementById('t_view_anchor');
+        anchor.href = viewUrl;
+        document.getElementById('t_view_link').style.display = 'block';
+      }
     })
     .catch(err=>{
       console.error(err);

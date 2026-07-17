@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ตรวจสอบสถานะ Work Permit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0F3D5C;
+    --navy-deep:#0A2D45;
+    --paper:#F6F4EE;
+    --card:#FFFFFF;
+    --line:#E2E0D6;
+    --ink:#1C2B34;
+    --sub:#6B7580;
+    --safety:#E8622C;
+    --ok:#2F8F5B;
+    --ok-bg:#E8F5EE;
+    --warn:#B8860B;
+    --warn-bg:#FCF3DA;
+    --bad:#C74E1E;
+    --bad-bg:#FDEEE7;
+    --radius:16px;
+    --shadow:0 1px 2px rgba(15,61,92,.06), 0 8px 24px -12px rgba(15,61,92,.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans Thai","IBM Plex Sans Thai",sans-serif;font-size:15px;line-height:1.55;min-height:100vh;display:flex;flex-direction:column;}
+  h1,h2,.display{font-family:"IBM Plex Sans Thai","Noto Sans Thai",sans-serif;}
+
+  .topbar{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%);color:#fff;padding:20px;text-align:center;}
+  .topbar .co{font-size:12px;letter-spacing:.06em;color:#BFD8EC;font-weight:500;}
+  .topbar h1{font-size:17px;margin:4px 0 0;font-weight:700;}
+
+  .wrap{max-width:460px;margin:0 auto;padding:24px 18px 60px;flex:1;width:100%;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:26px 22px;text-align:center;}
+
+  .state{padding:30px 0;color:var(--sub);font-size:14px;}
+  .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--navy);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .permit-id{font-size:12px;color:var(--sub);letter-spacing:.04em;}
+  .permit-id b{display:block;color:var(--navy);font-size:20px;font-weight:700;margin-top:2px;}
+
+  .status-badge{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:999px;font-weight:700;font-size:15px;margin:16px 0;}
+  .status-badge.approved{background:var(--ok-bg);color:var(--ok);}
+  .status-badge.rejected{background:var(--bad-bg);color:var(--bad);}
+  .status-badge.pending{background:var(--warn-bg);color:var(--warn);}
+  .status-dot{width:10px;height:10px;border-radius:50%;background:currentColor;}
+
+  .detail-list{text-align:left;margin-top:18px;border-top:1px solid var(--line);}
+  .detail-row{display:flex;justify-content:space-between;gap:12px;padding:10px 2px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .detail-row .k{color:var(--sub);flex:none;}
+  .detail-row .v{font-weight:600;text-align:right;}
+
+  .foot-note{margin-top:20px;font-size:11.5px;color:var(--sub);}
+  .error-box{color:var(--bad);font-size:14px;padding:20px 0;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="co">บริษัท สยามกลการโลจิสติกส์ จำกัด · SAFETY FIRST</div>
+  <h1>ตรวจสอบสถานะ Work Permit</h1>
+</div>
+
+<div class="wrap">
+  <div class="card" id="card">
+    <div class="state" id="loading">
+      <div class="spinner"></div>
+      กำลังตรวจสอบข้อมูล...
+    </div>
+  </div>
+</div>
+
+<script>
+// ต้องเป็น URL เดียวกับ GOOGLE_SCRIPT_URL ใน index.html
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+
+const STATUS_MAP = {
+  "อนุมัติ": { cls: "approved", label: "✅ อนุมัติแล้ว" },
+  "ไม่อนุมัติ": { cls: "rejected", label: "❌ ไม่อนุมัติ" },
+  "รออนุมัติ": { cls: "pending", label: "⏳ รออนุมัติ" }
+};
+
+function renderError(message){
+  document.getElementById("card").innerHTML = `<div class="error-box">${message}</div>`;
+}
+
+function renderPermit(data){
+  const statusInfo = STATUS_MAP[data.Status] || { cls: "pending", label: data.Status || "-" };
+
+  const rows = [
+    ["บริษัท", data.Company],
+    ["สถานที่ปฏิบัติงาน", data.Work_Location],
+    ["วันที่ปฏิบัติงาน", data.Work_Date],
+    ["เวลา", `${data.Time_From || "-"}–${data.Time_To || "-"}`],
+    ["จำนวนผู้ปฏิบัติงาน", data.Worker_Count || "-"]
+  ];
+  if (data.Approved_DateTime) {
+    rows.push(["ตรวจสอบเมื่อ", data.Approved_DateTime]);
+  }
+
+  document.getElementById("card").innerHTML = `
+    <div class="permit-id">เลขที่ Permit<b>${data.Permit_ID}</b></div>
+    <div class="status-badge ${statusInfo.cls}"><span class="status-dot"></span>${statusInfo.label}</div>
+    <div style="font-size:15px;font-weight:600;">${data.Requester_Name || "-"}</div>
+    <div class="detail-list">
+      ${rows.map(([k,v]) => `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}
+    </div>
+    <div class="foot-note">ข้อมูลนี้แสดงเฉพาะรายละเอียดที่จำเป็นต่อการตรวจสอบหน้างานเท่านั้น</div>
+  `;
+}
+
+async function loadPermit(){
+  const id = new URLSearchParams(window.location.search).get("id");
+  if (!id) {
+    renderError("ไม่พบเลขที่ Permit ใน URL — กรุณาสแกน QR Code จากเอกสาร Work Permit อีกครั้ง");
+    return;
+  }
+
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if (data.result !== "ok") {
+      renderError(data.message || "ไม่พบข้อมูล Permit นี้");
+      return;
+    }
+    renderPermit(data);
+  } catch (err) {
+    renderError("เกิดข้อผิดพลาดในการตรวจสอบข้อมูล กรุณาลองใหม่อีกครั้ง");
+  }
+}
+loadPermit();
+</script>
+
+</body>
+</html>
