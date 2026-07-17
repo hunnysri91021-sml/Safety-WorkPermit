@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>แบบทดสอบความปลอดภัย — Work Permit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0F3D5C; --navy-deep:#0A2D45; --paper:#F6F4EE; --card:#FFFFFF;
+    --line:#E2E0D6; --ink:#1C2B34; --sub:#6B7580; --safety:#E8622C;
+    --ok:#2F8F5B; --ok-bg:#E8F5EE; --bad:#C74E1E; --bad-bg:#FDEEE7;
+    --radius:16px; --shadow:0 1px 2px rgba(15,61,92,.06), 0 8px 24px -12px rgba(15,61,92,.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans Thai","IBM Plex Sans Thai",sans-serif;font-size:15px;line-height:1.55;}
+  .topbar{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%);color:#fff;padding:20px;text-align:center;}
+  .topbar .co{font-size:12px;letter-spacing:.06em;color:#BFD8EC;}
+  .topbar h1{font-size:17px;margin:4px 0 0;}
+  .wrap{max-width:560px;margin:0 auto;padding:24px 18px 60px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;margin-bottom:16px;}
+  .state{text-align:center;padding:30px 0;color:var(--sub);}
+  .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--navy);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .q-num{font-size:11.5px;color:var(--sub);font-weight:600;margin-bottom:6px;}
+  .q-text{font-size:15px;font-weight:600;margin-bottom:12px;}
+  .choice{display:block;border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:8px;cursor:pointer;font-size:14px;transition:.15s;}
+  .choice input{margin-right:8px;}
+  .choice.picked{border-color:var(--navy);background:#EAF1F8;font-weight:600;}
+  .submit-btn{width:100%;background:var(--safety);color:#fff;border:none;padding:14px;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .submit-btn:disabled{background:#C9C3B6;cursor:not-allowed;}
+  .result-icon{font-size:40px;text-align:center;margin-bottom:6px;}
+  .result-title{text-align:center;font-size:18px;font-weight:700;margin-bottom:4px;}
+  .result-title.pass{color:var(--ok);}
+  .result-title.fail{color:var(--bad);}
+  .result-score{text-align:center;color:var(--sub);font-size:13.5px;margin-bottom:16px;}
+  .error-box{color:var(--bad);text-align:center;padding:20px 0;}
+  .progress-hint{text-align:center;font-size:12px;color:var(--sub);margin-top:10px;}
+  .retry-btn{width:100%;background:var(--navy);color:#fff;border:none;padding:12px;border-radius:10px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:10px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="co">บริษัท สยามกลการโลจิสติกส์ จำกัด · SAFETY FIRST</div>
+  <h1>แบบทดสอบความปลอดภัยก่อนออกบัตรผู้รับเหมา</h1>
+</div>
+
+<div class="wrap">
+  <div class="card" id="card">
+    <div class="state"><div class="spinner"></div>กำลังโหลดแบบทดสอบ...</div>
+  </div>
+</div>
+
+<script>
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+
+const id = new URLSearchParams(window.location.search).get("id");
+let questions = [];
+const answers = {};
+
+function renderError(message){
+  document.getElementById("card").innerHTML = `<div class="error-box">${message}</div>`;
+}
+
+function renderQuestions(){
+  const card = document.getElementById("card");
+  card.innerHTML = `
+    <div style="font-size:12px;color:var(--sub);margin-bottom:2px;">เลขที่ Permit</div>
+    <div style="font-weight:700;color:var(--navy);margin-bottom:18px;">${id}</div>
+    <div id="qList"></div>
+    <button class="submit-btn" id="submitBtn" disabled onclick="submitQuiz()">ส่งคำตอบ</button>
+    <div class="progress-hint" id="progressHint">ตอบให้ครบทุกข้อก่อนส่งคำตอบ</div>
+  `;
+  document.getElementById("qList").innerHTML = questions.map((q, i) => `
+    <div style="margin-bottom:20px;">
+      <div class="q-num">ข้อ ${i+1} / ${questions.length}</div>
+      <div class="q-text">${q.question}</div>
+      ${["A","B","C","D"].map(k => q.choices[k] ? `
+        <label class="choice" data-q="${q.id}" data-c="${k}">
+          <input type="radio" name="q_${q.id}" value="${k}" onchange="pick('${q.id}','${k}',this)">
+          ${q.choices[k]}
+        </label>` : "").join("")}
+    </div>
+  `).join("");
+}
+
+function pick(qId, choice, input){
+  answers[qId] = choice;
+  document.querySelectorAll(`[data-q="${qId}"]`).forEach(el => el.classList.remove("picked"));
+  input.closest(".choice").classList.add("picked");
+  const allAnswered = questions.every(q => answers[q.id]);
+  document.getElementById("submitBtn").disabled = !allAnswered;
+  document.getElementById("progressHint").textContent = allAnswered
+    ? "ตอบครบแล้ว กดส่งคำตอบได้เลย"
+    : `ตอบแล้ว ${Object.keys(answers).length}/${questions.length} ข้อ`;
+}
+
+function renderResult(data){
+  const passed = data.passed;
+  document.getElementById("card").innerHTML = `
+    <div class="result-icon">${passed ? "✅" : "❌"}</div>
+    <div class="result-title ${passed ? "pass" : "fail"}">${passed ? "ผ่านแบบทดสอบ!" : "ยังไม่ผ่านเกณฑ์"}</div>
+    <div class="result-score">ทำถูก ${data.correctCount}/${data.total} ข้อ (${data.score}%) — เกณฑ์ผ่าน ${data.passPercent}%</div>
+    ${passed
+      ? `<div style="text-align:center;color:var(--sub);font-size:13.5px;">ระบบกำลังออกบัตรผู้รับเหมาพร้อม QR Code และจะส่งไฟล์ PDF ไปที่อีเมลที่ท่านให้ไว้ในไม่ช้า</div>`
+      : `<button class="retry-btn" onclick="location.reload()">ทำแบบทดสอบใหม่อีกครั้ง</button>`}
+  `;
+}
+
+async function submitQuiz(){
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "กำลังส่งคำตอบ...";
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "submitQuiz", permitId: id, answers: answers })
+    });
+    const data = await res.json();
+    if (data.result !== "ok") {
+      renderError(data.message || "เกิดข้อผิดพลาด");
+      return;
+    }
+    renderResult(data);
+  } catch (err) {
+    renderError("เกิดข้อผิดพลาดในการส่งคำตอบ กรุณาลองใหม่อีกครั้ง");
+  }
+}
+
+async function loadQuiz(){
+  if (!id) {
+    renderError("ไม่พบเลขที่ Permit ใน URL");
+    return;
+  }
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=quiz&id=${encodeURIComponent(id)}`);
+    const data = await res.json();
+    if (data.result !== "ok") {
+      renderError(data.message || "ไม่สามารถโหลดแบบทดสอบได้");
+      return;
+    }
+    if (data.alreadyPassed) {
+      document.getElementById("card").innerHTML = `
+        <div class="result-icon">✅</div>
+        <div class="result-title pass">ทำแบบทดสอบผ่านแล้ว</div>
+        <div class="result-score">บัตรผู้รับเหมาได้ถูกส่งไปที่อีเมลของท่านแล้ว</div>
+      `;
+      return;
+    }
+    questions = data.questions;
+    renderQuestions();
+  } catch (err) {
+    renderError("เกิดข้อผิดพลาดในการโหลดแบบทดสอบ กรุณาลองใหม่อีกครั้ง");
+  }
+}
+loadQuiz();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>เข้าสู่ระบบ รปภ. — Work Permit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0F3D5C; --navy-deep:#0A2D45; --paper:#F6F4EE; --card:#FFFFFF;
+    --line:#E2E0D6; --ink:#1C2B34; --sub:#6B7580; --safety:#E8622C;
+    --ok:#2F8F5B; --ok-bg:#E8F5EE; --bad:#C74E1E;
+    --radius:16px; --shadow:0 1px 2px rgba(15,61,92,.06), 0 8px 24px -12px rgba(15,61,92,.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans Thai","IBM Plex Sans Thai",sans-serif;font-size:15px;min-height:100vh;display:flex;flex-direction:column;}
+  .topbar{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%);color:#fff;padding:20px;text-align:center;}
+  .topbar .co{font-size:12px;letter-spacing:.06em;color:#BFD8EC;}
+  .topbar h1{font-size:17px;margin:4px 0 0;}
+  .wrap{max-width:400px;margin:0 auto;padding:28px 18px;flex:1;width:100%;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;text-align:center;}
+  input[type=text]{width:100%;border:1px solid var(--line);border-radius:9px;padding:14px;font-size:22px;letter-spacing:.3em;text-align:center;font-family:inherit;margin:16px 0;}
+  input:focus{outline:none;border-color:var(--navy);}
+  .login-btn{width:100%;background:var(--safety);color:#fff;border:none;padding:14px;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .login-btn:disabled{background:#C9C3B6;}
+  .msg{margin-top:12px;font-size:13px;}
+  .msg.error{color:var(--bad);}
+  .msg.ok{color:var(--ok);}
+  .active-box{background:var(--ok-bg);border:1px solid var(--ok);border-radius:12px;padding:18px;text-align:center;}
+  .active-box .name{font-size:16px;font-weight:700;color:var(--ok);}
+  .active-box .company{font-size:12.5px;color:var(--sub);margin-top:2px;}
+  .logout-btn{width:100%;border:1.5px solid var(--line);background:#fff;color:var(--sub);padding:11px;border-radius:10px;font-size:13.5px;font-family:inherit;cursor:pointer;margin-top:14px;}
+  .hint{font-size:12px;color:var(--sub);margin-top:16px;line-height:1.7;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="co">บริษัท สยามกลการโลจิสติกส์ จำกัด · SAFETY FIRST</div>
+  <h1>ระบบ รปภ. — เข้าสู่ระบบด้วย PIN</h1>
+</div>
+
+<div class="wrap">
+  <div class="card" id="card"></div>
+</div>
+
+<script>
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+const STORAGE_KEY = "wp_guard_session";
+
+function getSession(){
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch(e){ return null; }
+}
+
+function renderLoggedIn(session){
+  document.getElementById("card").innerHTML = `
+    <div class="active-box">
+      <div class="name">✅ ${session.guardName}</div>
+      <div class="company">${session.guardCompany || "-"}</div>
+    </div>
+    <div class="hint">อุปกรณ์นี้พร้อมใช้งานสแกน QR บนบัตรผู้รับเหมาแล้ว<br>เปิดกล้องมือถือแล้วสแกนได้เลย ระบบจะขึ้นปุ่ม "บันทึกเข้า/ออก" ให้อัตโนมัติ</div>
+    <button class="logout-btn" onclick="logout()">ออกจากระบบอุปกรณ์นี้</button>
+  `;
+}
+
+function renderLoginForm(errorMsg){
+  document.getElementById("card").innerHTML = `
+    <div style="color:var(--sub);font-size:13.5px;">กรอกรหัส PIN ของ รปภ.</div>
+    <input type="text" id="pinInput" inputmode="numeric" maxlength="6" placeholder="••••">
+    <button class="login-btn" id="loginBtn" onclick="doLogin()">เข้าสู่ระบบ</button>
+    <div class="msg error" id="msgBox">${errorMsg || ""}</div>
+    <div class="hint">ใช้ PIN ที่ Safety Team ออกให้ — อุปกรณ์นี้จะจำสถานะ login ไว้จนกว่าจะกด "ออกจากระบบ"</div>
+  `;
+  document.getElementById("pinInput").focus();
+}
+
+async function doLogin(){
+  const pin = document.getElementById("pinInput").value.trim();
+  const btn = document.getElementById("loginBtn");
+  const msgBox = document.getElementById("msgBox");
+  if (!pin) return;
+  btn.disabled = true;
+  btn.textContent = "กำลังตรวจสอบ...";
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "guardLogin", pin: pin })
+    });
+    const data = await res.json();
+    if (data.result !== "ok") {
+      msgBox.textContent = data.message || "PIN ไม่ถูกต้อง";
+      btn.disabled = false;
+      btn.textContent = "เข้าสู่ระบบ";
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    renderLoggedIn(data);
+  } catch (err) {
+    msgBox.textContent = "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+    btn.disabled = false;
+    btn.textContent = "เข้าสู่ระบบ";
+  }
+}
+
+function logout(){
+  localStorage.removeItem(STORAGE_KEY);
+  renderLoginForm("");
+}
+
+const existing = getSession();
+if (existing && existing.guardPin) {
+  renderLoggedIn(existing);
+} else {
+  renderLoginForm("");
+}
+</script>
+
+</body>
+</html>

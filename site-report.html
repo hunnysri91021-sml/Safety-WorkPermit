@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ส่งรูปประเมินพื้นที่ — Work Permit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0F3D5C; --navy-deep:#0A2D45; --paper:#F6F4EE; --card:#FFFFFF;
+    --line:#E2E0D6; --ink:#1C2B34; --sub:#6B7580; --safety:#E8622C;
+    --ok:#2F8F5B; --ok-bg:#E8F5EE; --bad:#C74E1E;
+    --radius:16px; --shadow:0 1px 2px rgba(15,61,92,.06), 0 8px 24px -12px rgba(15,61,92,.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans Thai","IBM Plex Sans Thai",sans-serif;font-size:15px;}
+  .topbar{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%);color:#fff;padding:20px;text-align:center;}
+  .topbar .co{font-size:12px;letter-spacing:.06em;color:#BFD8EC;}
+  .topbar h1{font-size:17px;margin:4px 0 0;}
+  .wrap{max-width:460px;margin:0 auto;padding:24px 18px 60px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px;}
+  .permit-id{font-size:12px;color:var(--sub);text-align:center;margin-bottom:16px;}
+  .permit-id b{display:block;color:var(--navy);font-size:17px;}
+  label.field{display:block;font-size:12.5px;color:var(--sub);font-weight:500;margin-bottom:6px;}
+  .photo-input{border:1.5px dashed var(--line);border-radius:12px;padding:20px;text-align:center;cursor:pointer;margin-bottom:14px;}
+  .photo-input input{display:none;}
+  .photo-input .icon{font-size:26px;}
+  .photo-input .txt{font-size:13px;color:var(--sub);margin-top:6px;}
+  .preview{width:100%;border-radius:12px;margin-bottom:14px;display:none;}
+  textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:14px;font-family:inherit;min-height:70px;margin-bottom:14px;}
+  .submit-btn{width:100%;background:var(--safety);color:#fff;border:none;padding:14px;border-radius:11px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .submit-btn:disabled{background:#C9C3B6;cursor:not-allowed;}
+  .msg{margin-top:12px;text-align:center;font-size:13.5px;font-weight:600;}
+  .msg.ok{color:var(--ok);}
+  .msg.error{color:var(--bad);}
+  .state{text-align:center;padding:30px 0;color:var(--sub);}
+  .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--navy);border-radius:50%;margin:0 auto 14px;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="co">บริษัท สยามกลการโลจิสติกส์ จำกัด · SAFETY FIRST</div>
+  <h1>ส่งรูปประเมินพื้นที่ปฏิบัติงาน</h1>
+</div>
+
+<div class="wrap">
+  <div class="card" id="card">
+    <div class="state"><div class="spinner"></div>กำลังโหลด...</div>
+  </div>
+</div>
+
+<script>
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+const id = new URLSearchParams(window.location.search).get("id");
+let photoDataUri = null;
+
+function renderForm(){
+  document.getElementById("card").innerHTML = `
+    <div class="permit-id">เลขที่ Permit<b>${id}</b></div>
+    <label class="field">ถ่ายรูปพื้นที่ปฏิบัติงาน <span style="color:var(--bad);">*</span></label>
+    <label class="photo-input" id="photoLabel">
+      <input type="file" id="photoFile" accept="image/*" capture="environment" onchange="onPhotoChosen(this)">
+      <div class="icon">📷</div>
+      <div class="txt">แตะเพื่อถ่ายรูป / เลือกรูปจากเครื่อง</div>
+    </label>
+    <img class="preview" id="preview">
+    <label class="field">หมายเหตุ (ถ้ามี)</label>
+    <textarea id="note" placeholder="เช่น จุดเสี่ยงที่พบในพื้นที่ อุปสรรค ฯลฯ"></textarea>
+    <button class="submit-btn" id="submitBtn" disabled onclick="submitReport()">ส่งรูปประเมินพื้นที่</button>
+    <div class="msg" id="msgBox"></div>
+  `;
+}
+
+function onPhotoChosen(input){
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      // ย่อรูปด้วย canvas ก่อนส่ง ลดขนาดไฟล์ให้ส่งได้เร็วขึ้นบนมือถือ
+      const maxW = 1280;
+      const scale = Math.min(1, maxW / img.width);
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      photoDataUri = canvas.toDataURL("image/jpeg", 0.75);
+      const preview = document.getElementById("preview");
+      preview.src = photoDataUri;
+      preview.style.display = "block";
+      document.getElementById("submitBtn").disabled = false;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function submitReport(){
+  const btn = document.getElementById("submitBtn");
+  const msgBox = document.getElementById("msgBox");
+  btn.disabled = true;
+  btn.textContent = "กำลังส่ง...";
+  msgBox.className = "msg";
+  msgBox.textContent = "";
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "submitSiteReport",
+        permitId: id,
+        photoBase64: photoDataUri,
+        note: document.getElementById("note").value.trim()
+      })
+    });
+    const data = await res.json();
+    if (data.result !== "ok") {
+      msgBox.className = "msg error";
+      msgBox.textContent = data.message || "ส่งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+      btn.disabled = false;
+      btn.textContent = "ส่งรูปประเมินพื้นที่";
+      return;
+    }
+    msgBox.className = "msg ok";
+    msgBox.textContent = "✅ ส่งรูปประเมินพื้นที่เรียบร้อยแล้ว";
+    btn.textContent = "ส่งแล้ว";
+  } catch (err) {
+    msgBox.className = "msg error";
+    msgBox.textContent = "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+    btn.disabled = false;
+    btn.textContent = "ส่งรูปประเมินพื้นที่";
+  }
+}
+
+if (!id) {
+  document.getElementById("card").innerHTML = `<div class="state" style="color:var(--bad);">ไม่พบเลขที่ Permit ใน URL</div>`;
+} else {
+  renderForm();
+}
+</script>
+
+</body>
+</html>

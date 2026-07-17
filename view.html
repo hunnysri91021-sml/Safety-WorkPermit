@@ -57,6 +57,23 @@
 
   .foot-note{margin-top:20px;font-size:11.5px;color:var(--sub);}
   .error-box{color:var(--bad);font-size:14px;padding:20px 0;}
+
+  .quiz-note{margin-top:16px;background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:12px 14px;font-size:12.5px;text-align:left;}
+  .quiz-note a{color:var(--warn);font-weight:700;}
+
+  .guard-panel{margin-top:18px;border-top:2px dashed var(--line);padding-top:16px;}
+  .guard-panel .g-who{font-size:12px;color:var(--sub);margin-bottom:10px;}
+  .guard-panel .g-who b{color:var(--navy);}
+  .scan-buttons{display:flex;gap:8px;}
+  .scan-btn{flex:1;border:none;border-radius:10px;padding:13px 8px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;color:#fff;}
+  .scan-btn.in{background:var(--ok);}
+  .scan-btn.out{background:var(--safety);}
+  .scan-btn:disabled{background:#C9C3B6;cursor:not-allowed;}
+  .scan-msg{margin-top:10px;font-size:13px;font-weight:600;}
+  .scan-msg.ok{color:var(--ok);}
+  .scan-msg.error{color:var(--bad);}
+
+  .action-link{display:block;margin-top:12px;background:var(--navy);color:#fff;text-decoration:none;padding:12px;border-radius:10px;font-size:13.5px;font-weight:700;}
 </style>
 </head>
 <body>
@@ -78,6 +95,7 @@
 <script>
 // ต้องเป็น URL เดียวกับ GOOGLE_SCRIPT_URL ใน index.html
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+const GUARD_STORAGE_KEY = "wp_guard_session";
 
 const STATUS_MAP = {
   "อนุมัติ": { cls: "approved", label: "✅ อนุมัติแล้ว" },
@@ -87,6 +105,10 @@ const STATUS_MAP = {
 
 function renderError(message){
   document.getElementById("card").innerHTML = `<div class="error-box">${message}</div>`;
+}
+
+function getGuardSession(){
+  try { return JSON.parse(localStorage.getItem(GUARD_STORAGE_KEY) || "null"); } catch(e){ return null; }
 }
 
 function renderPermit(data){
@@ -103,6 +125,16 @@ function renderPermit(data){
     rows.push(["ตรวจสอบเมื่อ", data.Approved_DateTime]);
   }
 
+  let quizNote = "";
+  if (data.Status === "อนุมัติ" && data.Quiz_Required && !data.Quiz_Passed) {
+    quizNote = `<div class="quiz-note">⚠️ งานนี้ต้องทำแบบทดสอบความปลอดภัยให้ผ่านก่อนจึงจะออกบัตรได้ — <a href="quiz.html?id=${encodeURIComponent(data.Permit_ID)}">ทำแบบทดสอบที่นี่</a></div>`;
+  }
+
+  let siteReportLink = "";
+  if (data.Status === "อนุมัติ") {
+    siteReportLink = `<a class="action-link" href="site-report.html?id=${encodeURIComponent(data.Permit_ID)}">📷 ส่งรูปประเมินพื้นที่ปฏิบัติงาน</a>`;
+  }
+
   document.getElementById("card").innerHTML = `
     <div class="permit-id">เลขที่ Permit<b>${data.Permit_ID}</b></div>
     <div class="status-badge ${statusInfo.cls}"><span class="status-dot"></span>${statusInfo.label}</div>
@@ -110,8 +142,62 @@ function renderPermit(data){
     <div class="detail-list">
       ${rows.map(([k,v]) => `<div class="detail-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join("")}
     </div>
+    ${quizNote}
+    ${siteReportLink}
+    <div id="guardPanel"></div>
     <div class="foot-note">ข้อมูลนี้แสดงเฉพาะรายละเอียดที่จำเป็นต่อการตรวจสอบหน้างานเท่านั้น</div>
   `;
+
+  renderGuardPanel(data);
+}
+
+function renderGuardPanel(data){
+  const guard = getGuardSession();
+  const panel = document.getElementById("guardPanel");
+  if (!guard || !guard.guardPin) { panel.innerHTML = ""; return; }
+  if (data.Status !== "อนุมัติ") {
+    panel.innerHTML = `<div class="guard-panel"><div class="g-who">รปภ.: <b>${guard.guardName}</b></div><div class="scan-msg error">Permit นี้ยังไม่ได้รับการอนุมัติ ไม่สามารถบันทึกเข้า-ออกได้</div></div>`;
+    return;
+  }
+  panel.innerHTML = `
+    <div class="guard-panel">
+      <div class="g-who">สแกนโดย รปภ.: <b>${guard.guardName}</b> (${guard.guardCompany || "-"})</div>
+      <div class="scan-buttons">
+        <button class="scan-btn in" onclick="scan('เข้า')">✅ บันทึกเข้าพื้นที่</button>
+        <button class="scan-btn out" onclick="scan('ออก')">🚪 บันทึกออกพื้นที่</button>
+      </div>
+      <div class="scan-msg" id="scanMsg"></div>
+    </div>
+  `;
+}
+
+async function scan(direction){
+  const id = new URLSearchParams(window.location.search).get("id");
+  const guard = getGuardSession();
+  const msgBox = document.getElementById("scanMsg");
+  document.querySelectorAll(".scan-btn").forEach(b => b.disabled = true);
+  msgBox.className = "scan-msg";
+  msgBox.textContent = "กำลังบันทึก...";
+  try {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "guardScan", permitId: id, guardPin: guard.guardPin, direction: direction })
+    });
+    const data = await res.json();
+    document.querySelectorAll(".scan-btn").forEach(b => b.disabled = false);
+    if (data.result !== "ok") {
+      msgBox.className = "scan-msg error";
+      msgBox.textContent = data.message || "บันทึกไม่สำเร็จ";
+      return;
+    }
+    msgBox.className = "scan-msg ok";
+    msgBox.textContent = `บันทึก "${direction}พื้นที่" เรียบร้อย (${new Date().toLocaleTimeString("th-TH")})`;
+  } catch (err) {
+    document.querySelectorAll(".scan-btn").forEach(b => b.disabled = false);
+    msgBox.className = "scan-msg error";
+    msgBox.textContent = "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง";
+  }
 }
 
 async function loadPermit(){

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard — Work Permit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0F3D5C; --navy-deep:#0A2D45; --paper:#F6F4EE; --card:#FFFFFF;
+    --line:#E2E0D6; --ink:#1C2B34; --sub:#6B7580; --safety:#E8622C;
+    --ok:#2F8F5B; --ok-bg:#E8F5EE; --warn:#B8860B; --warn-bg:#FCF3DA;
+    --bad:#C74E1E; --bad-bg:#FDEEE7;
+    --radius:14px; --shadow:0 1px 2px rgba(15,61,92,.06), 0 8px 24px -12px rgba(15,61,92,.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Noto Sans Thai","IBM Plex Sans Thai",sans-serif;font-size:15px;}
+  .topbar{background:linear-gradient(135deg,var(--navy-deep),var(--navy) 60%);color:#fff;padding:18px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .topbar .co{font-size:12px;color:#BFD8EC;}
+  .topbar h1{font-size:16px;margin:2px 0 0;}
+  .refresh-info{margin-left:auto;font-size:11.5px;color:#9FC2DE;}
+  .wrap{max-width:1000px;margin:0 auto;padding:22px 18px 60px;}
+
+  .login-card{max-width:360px;margin:60px auto;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;text-align:center;}
+  .login-card input{width:100%;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:15px;font-family:inherit;margin:14px 0;text-align:center;}
+  .login-card button{width:100%;background:var(--safety);color:#fff;border:none;padding:12px;border-radius:10px;font-size:14.5px;font-weight:700;font-family:inherit;cursor:pointer;}
+  .login-msg{color:var(--bad);font-size:13px;margin-top:8px;}
+
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;}
+  .kpi .label{font-size:12px;color:var(--sub);}
+  .kpi .value{font-size:26px;font-weight:700;color:var(--navy);margin-top:4px;}
+  .kpi.pending .value{color:var(--warn);}
+  .kpi.approved .value{color:var(--ok);}
+  .kpi.rejected .value{color:var(--bad);}
+  .kpi.onsite .value{color:var(--safety);}
+
+  .table-card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;overflow-x:auto;}
+  .table-card h2{font-size:14.5px;margin:0 0 12px;color:var(--navy);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;color:var(--sub);font-weight:600;padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap;}
+  td{padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  .status-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700;}
+  .status-pill.approved{background:var(--ok-bg);color:var(--ok);}
+  .status-pill.rejected{background:var(--bad-bg);color:var(--bad);}
+  .status-pill.pending{background:var(--warn-bg);color:var(--warn);}
+  .error-box{color:var(--bad);text-align:center;padding:20px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="co">บริษัท สยามกลการโลจิสติกส์ จำกัด · SAFETY FIRST</div>
+    <h1>Dashboard — Work Permit (Realtime)</h1>
+  </div>
+  <div class="refresh-info" id="refreshInfo"></div>
+</div>
+
+<div class="wrap" id="wrap">
+  <div class="login-card" id="loginCard">
+    <div style="color:var(--sub);font-size:13.5px;">กรอกรหัสผ่าน Dashboard</div>
+    <input type="password" id="pwInput" placeholder="รหัสผ่าน">
+    <button onclick="login()">เข้าดู Dashboard</button>
+    <div class="login-msg" id="loginMsg"></div>
+  </div>
+</div>
+
+<script>
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuBtSfFMd4j3ESf-jvuE_VAZGx2NjERos1DKArLPige30uPni_5JkjMje2trqonjlD/exec";
+const STORAGE_KEY = "wp_dashboard_pw";
+const REFRESH_MS = 20000;
+let refreshTimer = null;
+
+const STATUS_CLS = { "อนุมัติ": "approved", "ไม่อนุมัติ": "rejected", "รออนุมัติ": "pending" };
+
+async function login(){
+  const pw = document.getElementById("pwInput").value;
+  const ok = await tryLoad(pw);
+  if (ok) {
+    sessionStorage.setItem(STORAGE_KEY, pw);
+  } else {
+    document.getElementById("loginMsg").textContent = "รหัสผ่านไม่ถูกต้อง";
+  }
+}
+
+function renderDashboard(data){
+  document.getElementById("wrap").innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi"><div class="label">คำขอทั้งหมด</div><div class="value">${data.totalPermits}</div></div>
+      <div class="kpi pending"><div class="label">รออนุมัติ</div><div class="value">${data.pendingCount}</div></div>
+      <div class="kpi approved"><div class="label">อนุมัติแล้ว</div><div class="value">${data.approvedCount}</div></div>
+      <div class="kpi rejected"><div class="label">ไม่อนุมัติ</div><div class="value">${data.rejectedCount}</div></div>
+      <div class="kpi onsite"><div class="label">อยู่ในพื้นที่ตอนนี้</div><div class="value">${data.onSiteNow}</div></div>
+      <div class="kpi"><div class="label">เข้า/ออกวันนี้</div><div class="value">${data.todayEntries}/${data.todayExits}</div></div>
+    </div>
+    <div class="table-card">
+      <h2>คำขอล่าสุด</h2>
+      <table>
+        <thead><tr><th>เลขที่ Permit</th><th>บริษัท</th><th>สถานที่</th><th>วันที่</th><th>สถานะ</th></tr></thead>
+        <tbody>
+          ${data.recentPermits.map(p => `
+            <tr>
+              <td>${p.Permit_ID}</td>
+              <td>${p.Company}</td>
+              <td>${p.Work_Location}</td>
+              <td>${p.Work_Date}</td>
+              <td><span class="status-pill ${STATUS_CLS[p.Status] || 'pending'}">${p.Status}</span></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  document.getElementById("refreshInfo").textContent = "อัปเดตล่าสุด " + new Date().toLocaleTimeString("th-TH") + " (รีเฟรชอัตโนมัติทุก 20 วิ)";
+}
+
+async function tryLoad(pw){
+  try {
+    const res = await fetch(`${GOOGLE_SCRIPT_URL}?action=dashboard&pw=${encodeURIComponent(pw)}`);
+    const data = await res.json();
+    if (data.result !== "ok") return false;
+    renderDashboard(data);
+    if (!refreshTimer) refreshTimer = setInterval(() => tryLoad(pw), REFRESH_MS);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+const savedPw = sessionStorage.getItem(STORAGE_KEY);
+if (savedPw) {
+  tryLoad(savedPw).then(ok => { if (!ok) sessionStorage.removeItem(STORAGE_KEY); });
+}
+</script>
+
+</body>
+</html>
