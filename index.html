@@ -387,9 +387,11 @@ const PPE = [
 
 function buildChips(containerId, items, kind){
   const el = document.getElementById(containerId);
+  const inputType = kind === 'radio' ? 'radio' : 'checkbox';
+  const nameAttr = kind === 'radio' ? `name="${containerId}"` : '';
   el.innerHTML = items.map((label,i)=>`
     <label class="chip ${kind}" data-group="${containerId}">
-      <input type="${kind==='radio'?'radio name='+containerId:'checkbox'}" value="${label}" onchange="chipToggle(this)">
+      <input type="${inputType}" ${nameAttr} value="${label}" onchange="chipToggle(this)">
       <span class="dot"></span>${label}
     </label>`).join('');
 }
@@ -533,6 +535,7 @@ function sync(){
   const to = document.getElementById('f_to').value;
   const count = document.querySelector('#grp_count input:checked');
   const nature = getChecked('grp_nature');
+  const type = getChecked('grp_type');
 
   document.getElementById('t_name').textContent = name || '—';
   document.getElementById('t_company').textContent = company || '—';
@@ -540,8 +543,9 @@ function sync(){
   document.getElementById('t_datetime').textContent = date ? `${date}  ${from||'--:--'}–${to||'--:--'}` : '—';
   document.getElementById('t_count').textContent = count ? count.value : '—';
 
+  const tags = [...nature, ...type];
   const tagsEl = document.getElementById('t_tags');
-  tagsEl.innerHTML = nature.length ? nature.map(n=>`<span class="t-tag">${n.split('/')[0]}</span>`).join('') : '';
+  tagsEl.innerHTML = tags.length ? tags.map(n=>`<span class="t-tag">${n.split('/')[0]}</span>`).join('') : '';
 
   // progress
   const consentChecked = document.getElementById('f_consent').checked;
