@@ -308,7 +308,10 @@ function generatePermitId_(sheet) {
   }
   const countThisMonth = ids.filter(id => String(id).indexOf(prefix) === 0).length;
   const seq = String(countThisMonth + 1).padStart(3, "0");
-  return prefix + seq;
+  // ต่อท้ายด้วยรหัสสุ่ม 4 ตัว กันคนไล่เดาเลขที่ Permit (เช่น WP-202608-001, 002, 003...)
+  // แล้วยิง action "status" ที่ไม่ต้องล็อกอินไปดึงชื่อผู้ขอ/บริษัทของ Permit คนอื่นได้ทีละใบ
+  const randomSuffix = Utilities.getUuid().replace(/-/g, "").slice(0, 4).toUpperCase();
+  return prefix + seq + "-" + randomSuffix;
 }
 
 // ---------------------------------------------------------------
