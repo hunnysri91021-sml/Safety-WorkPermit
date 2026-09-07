@@ -4,6 +4,11 @@
 ทำงานบน Google Sheets + Google Apps Script (ฟรี ไม่ต้องมี license เพิ่ม) และ
 โฮสต์หน้าเว็บผ่าน GitHub Pages
 
+> ระบบพี่น้อง **SHE Patrol** (บันทึกผลตรวจพื้นที่ความปลอดภัย) อยู่ในโฟลเดอร์
+> [`she-patrol/`](she-patrol/) — เป็นระบบแยกต่างหาก มี Google Sheet/Apps Script/
+> การ deploy ของตัวเองคนละชุด ไม่ได้ใช้ Sheet หรือ Web App เดียวกับระบบนี้ ดูรายละเอียด
+> ได้ที่ [`she-patrol/README.md`](she-patrol/README.md)
+
 ## แผนผังไฟล์
 
 | ไฟล์ | ใช้โดย | หน้าที่ |
